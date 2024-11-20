@@ -32,7 +32,7 @@ wppconnect
   .create({
     session: 'sessionName',
     catchQR: (base64Qrimg, asciiQR, attempts, urlCode) => {
-      console.log('Terminal qrcode: ', asciiQR);
+      console.log(asciiQR);
     },
     statusFind: (statusSession, session) => {
       console.log('Status Session: ', statusSession);
@@ -58,7 +58,7 @@ async function start(client: wppconnect.Whatsapp): Promise<void> {
         const chatId = message.chatId;
         console.log('Mensagem recebida:', message.body);
         if (AI_SELECTED === 'GPT') {
-          await initializeNewAIChatSession(chatId);
+          await initializeNewAIChatSession(String(chatId));
         }
 
         if (!messageBufferPerChatId.has(chatId)) {
@@ -86,13 +86,13 @@ async function start(client: wppconnect.Whatsapp): Promise<void> {
                 try {
                   if (AI_SELECTED === 'GPT') {
                     answer = await mainOpenAI({
-                      currentMessage,
-                      chatId,
+                      currentMessage: currentMessage ?? '',
+                      chatId: String(chatId) || '',
                     });
                   } else {
                     answer = await mainGoogle({
-                      currentMessage,
-                      chatId,
+                      currentMessage: currentMessage ?? '',
+                      chatId: String(chatId) || '',
                     });
                   }
                   break;
@@ -112,7 +112,7 @@ async function start(client: wppconnect.Whatsapp): Promise<void> {
               messageBufferPerChatId.delete(chatId);
               messageTimeouts.delete(chatId);
             })();
-          }, 15000)
+          }, 7000)
         );
       }
     })();
