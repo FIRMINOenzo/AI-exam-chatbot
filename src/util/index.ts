@@ -37,7 +37,7 @@ export async function sendMessagesWithDelay({
   targetNumber: string;
 }): Promise<void> {
   for (const [, msg] of messages.entries()) {
-    const dynamicDelay = msg.length * 100;
+    const dynamicDelay = msg.length * 10;
     await new Promise((resolve) => setTimeout(resolve, dynamicDelay));
     client
       .sendText(targetNumber, msg.trimStart())
