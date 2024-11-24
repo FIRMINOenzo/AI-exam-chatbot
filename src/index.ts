@@ -1,7 +1,6 @@
 import wppconnect from '@wppconnect-team/wppconnect';
 
 import dotenv from 'dotenv';
-import { initializeNewAIChatSession, mainOpenAI } from './service/openai';
 import { splitMessages, sendMessagesWithDelay } from './util';
 import { mainGoogle } from './service/google';
 
@@ -48,73 +47,74 @@ wppconnect
   });
 
 async function start(client: wppconnect.Whatsapp): Promise<void> {
-  client.onMessage((message) => {
-    (async () => {
-      if (
-        message.type === 'chat' &&
-        !message.isGroupMsg &&
-        message.chatId !== 'status@broadcast'
-      ) {
-        const chatId = message.chatId;
-        console.log('Mensagem recebida:', message.body);
-        if (AI_SELECTED === 'GPT') {
-          await initializeNewAIChatSession(String(chatId));
-        }
-
-        if (!messageBufferPerChatId.has(chatId)) {
-          messageBufferPerChatId.set(chatId, [message.body]);
-        } else {
-          messageBufferPerChatId.set(chatId, [
-            ...messageBufferPerChatId.get(chatId),
-            message.body,
-          ]);
-        }
-
-        if (messageTimeouts.has(chatId)) {
-          clearTimeout(messageTimeouts.get(chatId));
-        }
-        console.log('Aguardando novas mensagens...');
-        messageTimeouts.set(
-          chatId,
-          setTimeout(() => {
-            (async () => {
-              const currentMessage = !messageBufferPerChatId.has(chatId)
-                ? message.body
-                : [...messageBufferPerChatId.get(chatId)].join(' \n ');
-              let answer = '';
-              for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-                try {
-                  if (AI_SELECTED === 'GPT') {
-                    answer = await mainOpenAI({
-                      currentMessage: currentMessage ?? '',
-                      chatId: String(chatId) || '',
-                    });
-                  } else {
-                    answer = await mainGoogle({
-                      currentMessage: currentMessage ?? '',
-                      chatId: String(chatId) || '',
-                    });
-                  }
-                  break;
-                } catch (error) {
-                  if (attempt === MAX_RETRIES) {
-                    throw error;
-                  }
-                }
-              }
-              const messages = splitMessages(answer);
-              console.log('Enviando mensagens...');
-              await sendMessagesWithDelay({
-                client,
-                messages,
-                targetNumber: message.from,
-              });
-              messageBufferPerChatId.delete(chatId);
-              messageTimeouts.delete(chatId);
-            })();
-          }, 7000)
-        );
-      }
-    })();
+  client.onMessage(async (message) => {
+    await handleMessage(client, message);
   });
+}
+
+async function handleMessage(
+  client: wppconnect.Whatsapp,
+  message: any
+): Promise<void> {
+  if (
+    message.type === 'chat' &&
+    !message.isGroupMsg &&
+    message.chatId !== 'status@broadcast'
+  ) {
+    const chatId = message.chatId;
+    console.log('Mensagem recebida:', message.body);
+
+    if (!messageBufferPerChatId.has(chatId)) {
+      messageBufferPerChatId.set(chatId, [message.body]);
+    } else {
+      messageBufferPerChatId.set(chatId, [
+        ...messageBufferPerChatId.get(chatId),
+        message.body,
+      ]);
+    }
+
+    if (messageTimeouts.has(chatId)) {
+      clearTimeout(messageTimeouts.get(chatId));
+    }
+    console.log('Aguardando novas mensagens...');
+    messageTimeouts.set(
+      chatId,
+      setTimeout(async () => {
+        await processMessages(client, message, chatId);
+      }, 7000)
+    );
+  }
+}
+
+async function processMessages(
+  client: wppconnect.Whatsapp,
+  message: any,
+  chatId: string
+): Promise<void> {
+  const currentMessage = !messageBufferPerChatId.has(chatId)
+    ? message.body
+    : [...messageBufferPerChatId.get(chatId)].join(' \n ');
+  let answer = '';
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      answer = await mainGoogle({
+        currentMessage: currentMessage ?? '',
+        chatId: String(chatId) || '',
+      });
+      break;
+    } catch (error) {
+      if (attempt === MAX_RETRIES) {
+        throw error;
+      }
+    }
+  }
+  const messages = splitMessages(answer);
+  console.log('Enviando mensagens...');
+  await sendMessagesWithDelay({
+    client,
+    messages,
+    targetNumber: message.from,
+  });
+  messageBufferPerChatId.delete(chatId);
+  messageTimeouts.delete(chatId);
 }
